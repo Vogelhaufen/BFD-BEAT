@@ -1,4 +1,4 @@
-BFD-BEAT
+# BFD-BEAT
 
 A simple Cisco® BFD-like heartbeat client/server to monitor my WireGuard setup with Starlink®.
 
