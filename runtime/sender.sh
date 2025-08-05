@@ -6,7 +6,7 @@ PORT=9000
 INTERVAL_MS=50    # Heartbeat interval in milliseconds
 
 LOGFILE="/var/log/heartbeat-sender.log"
-exec >> "$LOGFILE" 2>&1
+#exec >> "$LOGFILE" 2>&1
 
 echo "$(date '+%F %T') [sender] Starting heartbeat sender to $REMOTE:$PORT"
 
