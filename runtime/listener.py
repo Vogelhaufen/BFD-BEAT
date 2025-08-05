@@ -1,39 +1,93 @@
-import subprocess
+#!/usr/bin/env python3
 import socket
+import select
 import time
+import subprocess
 from datetime import datetime
 
-PORT = 9000
-GRACE_PERIOD = 3  # seconds
-# GRACE_PERIOD = 0.05 # ms
+# Config
+TUNNELS = {
+    'wg0': 9000,
+    'wg1': 9001,
+}
+DEAD_TIMEOUT = 120     # seconds tunnel stays DOWN after failure
+DETECTION_THRESHOLD = 0.05  # 50 ms max allowed heartbeat interval
 
-def on_failure():
-    cmd = ["echo", "Heartbeat failure detected!"]  # Replace with your real command
-    try:
-        subprocess.run(cmd, check=True)
-    except subprocess.CalledProcessError as e:
-        print(f"Error executing failure command: {e}")
+# State variables
+state = {tunnel: 'UP' for tunnel in TUNNELS}
+last_heartbeat = {tunnel: time.time() for tunnel in TUNNELS}
+dead_since = {tunnel: None for tunnel in TUNNELS}
 
-sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-sock.bind(('', PORT))
-sock.settimeout(1)  # Non-blocking with 1 second timeout
+def log(msg):
+    print(f"[{datetime.now()}] {msg}")
 
-last_heartbeat = time.time()
-last_status = "OK"
+def bring_down(tunnel):
+    log(f"Bringing DOWN tunnel {tunnel}")
+    subprocess.run(['wg-quick', 'down', tunnel], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    state[tunnel] = 'DOWN'
+    dead_since[tunnel] = time.time()
 
-print(f"[{datetime.now()}] Listening for heartbeats on UDP port {PORT}")
+def bring_up(tunnel):
+    log(f"Bringing UP tunnel {tunnel}")
+    subprocess.run(['wg-quick', 'up', tunnel], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    state[tunnel] = 'UP'
+    dead_since[tunnel] = None
+    last_heartbeat[tunnel] = time.time()  # Reset heartbeat time on up
 
-while True:
-    try:
-        data, addr = sock.recvfrom(1024)
-        print(f"[{datetime.now()}] Heartbeat OK (received from {addr}): {data.decode().strip()}")
-        last_heartbeat = time.time()
-        last_status = "OK"
-    except socket.timeout:
-        # No data received in the last second
+def check_heartbeat(tunnel):
+    now = time.time()
+    diff = now - last_heartbeat[tunnel]
+    return diff <= DETECTION_THRESHOLD
+
+def setup_sockets():
+    sockets = {}
+    for tunnel, port in TUNNELS.items():
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.setblocking(False)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.bind(('', port))
+        sockets[sock] = tunnel
+        log(f"Listening for heartbeats on UDP port {port} for tunnel {tunnel}")
+    return sockets
+
+def main_loop():
+    sockets = setup_sockets()
+    while True:
+        rlist, _, _ = select.select(list(sockets.keys()), [], [], 0.01)  # 10 ms timeout
+
         now = time.time()
-        diff = now - last_heartbeat
-        if diff > GRACE_PERIOD and last_status != "FAILURE":
-            print(f"[{datetime.now()}] FAILURE: No heartbeat in last {GRACE_PERIOD} seconds")
-            last_status = "FAILURE"
-            on_failure()
+
+        # Handle incoming heartbeats
+        for sock in rlist:
+            try:
+                data, addr = sock.recvfrom(1024)
+                tunnel = sockets[sock]
+                last_heartbeat[tunnel] = now
+                log(f"Heartbeat OK from {addr} on tunnel {tunnel}: {data.decode(errors='ignore').strip()}")
+            except Exception as e:
+                log(f"Error receiving data: {e}")
+
+        # Check tunnel states
+        for tunnel in TUNNELS:
+            alive = check_heartbeat(tunnel)
+
+            if state[tunnel] == 'UP':
+                if not alive:
+                    log(f"Tunnel {tunnel} lost heartbeat, bringing down")
+                    bring_down(tunnel)
+
+            elif state[tunnel] == 'DOWN':
+                if dead_since[tunnel] and (now - dead_since[tunnel]) >= DEAD_TIMEOUT:
+                    if alive:
+                        log(f"Tunnel {tunnel} heartbeat back after cooldown, bringing up")
+                        bring_up(tunnel)
+                    else:
+                        log(f"Tunnel {tunnel} still dead after cooldown")
+
+        time.sleep(0.01)  # Small sleep to avoid busy loop
+
+if __name__ == '__main__':
+    try:
+        main_loop()
+    except KeyboardInterrupt:
+        log("Stopping listener")
