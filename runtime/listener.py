@@ -5,6 +5,7 @@ from datetime import datetime
 
 PORT = 9000
 GRACE_PERIOD = 3  # seconds
+# GRACE_PERIOD = 0.05 # ms
 
 def on_failure():
     cmd = ["echo", "Heartbeat failure detected!"]  # Replace with your real command
