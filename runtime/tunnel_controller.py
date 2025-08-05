@@ -2,40 +2,46 @@
 import socket
 import os
 import json
-import subprocess
 from datetime import datetime
 
 SOCK_PATH = '/tmp/tunnel_status.sock'
 
-# Tunnel info - adjust IP gateways and routing table numbers as needed
-TUNNELS = {
-    'wg0': {'table': '100', 'gateway': '10.0.0.1', 'priority': 100},
-    'wg1': {'table': '101', 'gateway': '10.1.0.1', 'priority': 200},
-}
-
 def log(msg):
     print(f"[{datetime.now()}] {msg}")
 
-def run_cmd(cmd):
+def apply_tunnel_state(tunnel, state):
+    # Placeholder for applying ip rule/route changes as root
+    if state == 'up':
+        log(f"Controller: Tunnel {tunnel} is UP. (Apply routing rules here)")
+    else:
+        log(f"Controller: Tunnel {tunnel} is DOWN. (Apply routing rules here)")
+
+def main():
+    if os.path.exists(SOCK_PATH):
+        os.remove(SOCK_PATH)
+
+    server = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
+    server.bind(SOCK_PATH)
+
+    log("Controller started, waiting for tunnel status updates")
+
     try:
-        subprocess.run(cmd, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        log(f"Executed: {cmd}")
-    except subprocess.CalledProcessError as e:
-        log(f"Command failed: {cmd} ; stderr: {e.stderr.decode().strip()}")
+        while True:
+            data, _ = server.recvfrom(1024)
+            try:
+                status = json.loads(data.decode())
+                tunnel = status['tunnel']
+                state = status['state']
+                timestamp = status['timestamp']
+                log(f"Received status: Tunnel {tunnel} is {state}")
+                apply_tunnel_state(tunnel, state)
+            except Exception as e:
+                log(f"Failed to process status message: {e}")
 
-# Track current tunnel states globally to make decisions
-current_states = {t: 'down' for t in TUNNELS}
+    finally:
+        server.close()
+        if os.path.exists(SOCK_PATH):
+            os.remove(SOCK_PATH)
 
-def setup_ip_rules():
-    # Add ip rules and route tables once, ignore if already present
-    for tunnel, info in TUNNELS.items():
-        # Add route table default route
-        run_cmd(f"ip route add default via {info['gateway']} dev {tunnel} table {info['table']} || true")
-        # Add ip rule to lookup table based on fwmark
-        run_cmd(f"ip rule add fwmark {info['priority']} lookup {info['table']} || true")
-
-def flush_ip_rules():
-    # Remove all rules and routes added (for cleanup, optional)
-    for tunnel, info in TUNNELS.items():
-        run_cmd(f"ip route del default via {info['gateway']} dev {tunnel} table {info['table']} || true")
-        run_cmd(f"_
+if __name__ == '__main__':
+    main()
