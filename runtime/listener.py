@@ -7,8 +7,8 @@ TUNNELS = {
     'wg0': 9000,
     'wg1': 9001,
 }
-DEAD_TIMEOUT = 120     # seconds tunnel stays DOWN after failure
-DETECTION_THRESHOLD = 0.05  # 50 ms max allowed heartbeat interval
+DEAD_TIMEOUT = 12     # seconds tunnel stays DOWN after failure
+DETECTION_THRESHOLD = 1.05  # 50 ms max allowed heartbeat interval
 LOG_STILL_DEAD_INTERVAL = 10  # seconds between repeated "still dead" logs
 
 state = {tunnel: 'UP' for tunnel in TUNNELS}
