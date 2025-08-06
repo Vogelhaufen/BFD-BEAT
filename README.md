@@ -7,6 +7,8 @@ My ISP only provides CGNAT. CGNAT is known to b0rk VPNs. I tunnel VPNs through I
 
 Listener is split into 2 files for security reasons:
 
+net socket part and sys executing commands w/ root privs
+
 heartbeat_sender.py: A simple UDP heartbeat sender, configurable host/port/interval, clean handling of keyboard interrupt, and error handling on send.
 
 tunnel_controller.py: A whitelist approach to allowed commands to avoid executing arbitrary commands (critical for root-level operations). Uses subprocess.run() with check=True for proper error detection and no shell injection risk.
