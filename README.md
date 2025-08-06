@@ -13,4 +13,6 @@ heartbeat_sender.py: A simple UDP heartbeat sender, configurable host/port/inter
 
 tunnel_controller.py: A whitelist approach to allowed commands to avoid executing arbitrary commands (critical for root-level operations). Uses subprocess.run() with check=True for proper error detection and no shell injection risk.
 
+TCP-Connections die on failover. I solved this with a TCP bouncer which is not part of this setup.
+
 <img width="1024" height="1536" alt="image" src="https://github.com/user-attachments/assets/301d7e2c-10d2-4fd1-8420-33bc35c0b4e8" />
